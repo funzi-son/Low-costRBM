@@ -1,0 +1,86 @@
+function exp_mnist10K_rule_vs_model()
+sys_str = computer();
+if ~isempty(findstr('WIN',sys_str))
+     EXP_DIR = 'C:\Pros\Experiments\KL.Ext.Learn\MNIST\F_EXT\';        
+     lm = '\';    
+elseif ~isempty(findstr('GLN',sys_str))
+     EXP_DIR = '/home/funzi/Documents/Experiments/DBN_CPRESS/';      
+     lm = '/';
+     addpath(genpath('/home/funzi/My.Academic/My.Codes/DATA/MNIST/'));
+else
+    fprintf('Cannot find paths\n');
+    return;
+end
+
+load mnist_train_dat_10k;
+load mnist_train_lab_10k;
+
+
+load mnist_test_dat_10k;
+load mnist_test_lab_10k;
+for trial=1:5
+    
+log_file = strcat(EXP_DIR,'trial_60K_1000_test',num2str(trial),'.mat');
+for lr = [0.05 0.2]%[0.01 0.05 0.1 0.2 0.5]
+for ld = [0]% 0.01 0.1 0.5 1 5 10]    
+conf.hidNum = 1000;
+conf.eNum   = 50;
+conf.bNum   = 100;
+conf.sNum   = 100;
+conf.gNum   = 1;
+conf.params = [lr lr 0.01 0.00002];
+
+conf.lambda = ld;
+conf.p = 0.0001; % this seem does not effect much
+
+if trial==1 
+    if lr==0.2
+    load(strcat(EXP_DIR,'rbm_h',num2str(conf.hidNum),'_lr',num2str(lr),'_trial',num2str(trial),'.mat'),'model');    
+    else
+        continue;
+    end
+else
+    model = train_rbm_(conf,traind);
+    save(strcat(EXP_DIR,'rbm_h',num2str(conf.hidNum),'_lr',num2str(lr),'_trial',num2str(trial),'.mat'),'model');
+end
+
+fprintf('Extract features\n');
+trn_ftrs = logistic(traind*model.W + repmat(model.hidB,size(traind,1),1));
+%vld_ftrs = logistic(vldd*model.W + repmat(model.hidB,size(vldd,1),1));
+tst_ftrs = logistic(testd*model.W + repmat(model.hidB,size(testd,1),1));
+
+fprintf('Extract rules \n')
+R = extract_rbm(model,'',0);
+
+trn_ftrs_r = rule_inference_(R,traind);
+%vld_ftrs_r = rule_inference_(R,vldd);
+tst_ftrs_r = rule_inference_(R,testd);
+
+for c = [1 5]%[0.01 0.05 0.1 0.5 1 5 10]
+for g = [0.001 0.05 1]%[0.01 0.05 0.1 0.5 1 5 10]    
+    model = svmtrain(trainl, trn_ftrs,['-h 0 -c ' num2str(c) ' -g ' num2str(g)]);
+    
+%     [~, accuracy, ~] = svmpredict(vldl, vld_ftrs, model);
+%     vld_acc = accuracy(1);
+   [~, accuracy, ~] = svmpredict(testl, tst_ftrs, model);
+   tst_acc = accuracy(1);
+    
+    % ----------------------
+    model = svmtrain(trainl, trn_ftrs_r,['-c ' num2str(c) ' -g ' num2str(g)]);
+    
+    %[~, accuracy, ~] = svmpredict(vldl, vld_ftrs_r, model);
+    %vld_acc_r = accuracy(1);
+    
+    [~, accuracy, ~] = svmpredict(testl, tst_ftrs_r, model);
+    tst_acc_r = accuracy(1);
+    logging(log_file,[conf.hidNum lr ld c g tst_acc tst_acc_r]);
+    
+    %logging(log_file,[conf.hidNum lr ld c g vld_acc vld_acc_r]);    
+end % end c
+end % end g
+end % end learning rate
+end % end 
+
+end % trial
+end
+
